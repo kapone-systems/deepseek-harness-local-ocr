@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "deepseek-harness-local-ocr-service"
+version = "0.1.0"
+description = "Loopback-only OCR service for the DeepSeek Harness local OCR plugin"
+requires-python = ">=3.10,<3.13"
+dependencies = [
+  "fastapi>=0.115,<1.0",
+  "numpy>=1.26,<3.0",
+  "pillow>=10.3,<13.0",
+  "pydantic-settings>=2.5,<3.0",
+  "python-multipart>=0.0.12,<1.0",
+  "uvicorn[standard]>=0.30,<1.0",
+]
+
+[project.optional-dependencies]
+ocr = [
+  "paddleocr>=3.0,<4.0",
+  "paddlepaddle>=3.0,<4.0",
+]
+ocr-legacy = [
+  "paddleocr>=2.7,<3.0",
+  "paddlepaddle>=2.6,<3.0",
+]
+test = [
+  "httpx>=0.27,<1.0",
+  "pytest>=8.3,<9.0",
+  "pytest-asyncio>=0.24,<1.0",
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+pythonpath = ["src"]
+testpaths = ["tests"]

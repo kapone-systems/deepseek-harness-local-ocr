@@ -1,0 +1,15 @@
+.env
+.venv/
+.pnpm-store/
+**/__pycache__/
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+**/node_modules/
+**/*.egg-info/
+harness-plugin/dist/
+**/lib/
+**/coverage/
+*.py[cod]
+*.log
+*.tmp

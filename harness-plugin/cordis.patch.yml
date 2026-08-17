@@ -1,0 +1,29 @@
+# Local OCR bundle. This layer is expected to follow @deepseek-ai/dsh-base.
+# The attachment override raises Harness's per-image admission limit from its
+# 5 MiB default to the OCR plugin's documented 15 MiB default. Other attachment
+# settings continue to use @deepseek-ai/dsh-attachment-local schema defaults.
+
+- id: attachment-local
+  config:
+    maxImageBytes: 15728640
+
+- insert:
+    - id: dsh-plugin-local-ocr
+      name: dsh-plugin-local-ocr
+      config:
+        serviceUrl: !!js process.env.OCR_SERVICE_URL ?? 'http://127.0.0.1:8765'
+        # Store only an environment-variable name. The plugin resolves its
+        # value at request time so dsh --dump-config cannot reveal the token.
+        tokenEnv: OCR_SERVICE_TOKEN
+        timeout: !!js Number(process.env.OCR_TIMEOUT_SECONDS ?? 30)
+        maxFile: !!js Number(process.env.OCR_MAX_FILE_MB ?? 15)
+        minConfidence: !!js Number(process.env.OCR_MIN_CONFIDENCE ?? 0.5)
+        maxConcurrency: !!js Number(process.env.OCR_MAX_CONCURRENCY ?? 2)
+        # Semicolon-separated absolute directory roots. Empty keeps local-file
+        # access disabled; Harness attachments remain available.
+        allowedDirectories: !!js (process.env.OCR_ALLOWED_DIRECTORIES ?? '').split(';').map(value => value.trim()).filter(Boolean)
+        maxEdge: !!js Number(process.env.OCR_MAX_IMAGE_EDGE ?? 12000)
+        maxPixels: !!js Number(process.env.OCR_MAX_PIXELS ?? 40000000)
+        bridgeProvider: deepseek-local-ocr
+        upstreamProvider: deepseek-official
+        rewriteImageAttachments: true
