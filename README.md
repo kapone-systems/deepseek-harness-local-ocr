@@ -4,7 +4,7 @@
 
 > 这是 **本地 OCR 插件**，不是通用图片理解模型：图片字节在本机由 PaddleOCR 处理，模型收到的是 OCR 结果和坐标。
 
-[GitHub 仓库](https://github.com/kapone-systems/deepseek-harness-local-ocr) · [架构说明](ARCHITECTURE.md) · [Harness 兼容性记录](HARNESS_COMPATIBILITY.md) · [本机验证记录](VERIFICATION.md)
+[GitHub 仓库](https://github.com/kapone-systems/dsh-vision-local-ocr) · [架构说明](ARCHITECTURE.md) · [Harness 兼容性记录](HARNESS_COMPATIBILITY.md) · [本机验证记录](VERIFICATION.md)
 
 ## 一眼看懂
 
@@ -60,8 +60,8 @@ flowchart LR
 ### 1. 下载并安装
 
 ~~~powershell
-git clone https://github.com/kapone-systems/deepseek-harness-local-ocr.git
-Set-Location .\deepseek-harness-local-ocr
+git clone https://github.com/kapone-systems/dsh-vision-local-ocr.git
+Set-Location .\dsh-vision-local-ocr
 
 Copy-Item .env.example .env
 .\scripts\install.ps1
@@ -101,7 +101,7 @@ HARNESS_RUNTIME_DIR=D:\\Program Files\\deepseek-harness\\runtime
 在第二个 PowerShell 窗口：
 
 ~~~powershell
-Set-Location .\deepseek-harness-local-ocr
+Set-Location .\dsh-vision-local-ocr
 .\scripts\check-health.ps1
 .\scripts\start-harness-local-ocr.ps1 -Profile local-ocr -Port 3081
 ~~~
@@ -138,7 +138,7 @@ Set-Location .\deepseek-harness-local-ocr
 
 ~~~text
 请在 Windows PowerShell 中部署这个仓库：
-https://github.com/kapone-systems/deepseek-harness-local-ocr
+https://github.com/kapone-systems/dsh-vision-local-ocr
 
 目标：让 DeepSeek Harness 的 local-ocr profile 在本机通过 PaddleOCR 读取 PNG/JPEG/WebP 图片文字。
 
