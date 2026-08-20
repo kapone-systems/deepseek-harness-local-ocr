@@ -39,7 +39,7 @@ jobs:
       - run: pnpm test
       - run: pnpm run build
       - run: pnpm pack --pack-destination "$RUNNER_TEMP"
-      - run: npm install --ignore-scripts --omit=peer --prefix "$RUNNER_TEMP/clean-plugin" "$RUNNER_TEMP"/dsh-plugin-local-ocr-*.tgz
+      - run: npm install --ignore-scripts --omit=peer --legacy-peer-deps --prefix "$RUNNER_TEMP/clean-plugin" "$RUNNER_TEMP"/dsh-plugin-local-ocr-*.tgz
       - name: Load the packed plugin in a clean Harness Web profile
         shell: bash
         run: |
