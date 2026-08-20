@@ -13,6 +13,7 @@ const OUTPUT_SCHEMA = {
   type: 'object',
   additionalProperties: false,
   properties: {
+    response_version: { type: 'string', required: true },
     request_id: { type: 'string', required: true },
     image: {
       type: 'object',
@@ -40,6 +41,9 @@ const OUTPUT_SCHEMA = {
             },
           },
           confidence: { type: 'number', required: true },
+          block_index: { type: 'integer', required: true },
+          line_index: { type: 'integer', required: true },
+          reading_order: { type: 'integer', required: true },
           line: { type: 'integer', required: true },
         },
       },

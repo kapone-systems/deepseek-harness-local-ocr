@@ -7,6 +7,13 @@
   config:
     maxImageBytes: 15728640
 
+# Harness settings are normally shared by every profile under DSH_HOME. Keep
+# the local-OCR profile's model selection separate so the OCR bridge remains a
+# deliberate, profile-local choice.
+- id: settings
+  config:
+    path: !!js process.env.DSH_LOCAL_OCR_SETTINGS_PATH ?? dshHomePath('profiles/local-ocr/settings.yaml')
+
 - insert:
     - id: dsh-plugin-local-ocr
       name: dsh-plugin-local-ocr
@@ -15,15 +22,17 @@
         # Store only an environment-variable name. The plugin resolves its
         # value at request time so dsh --dump-config cannot reveal the token.
         tokenEnv: OCR_SERVICE_TOKEN
-        timeout: !!js Number(process.env.OCR_TIMEOUT_SECONDS ?? 30)
+        timeout: !!js Number(process.env.OCR_TIMEOUT_SECONDS ?? 90)
         maxFile: !!js Number(process.env.OCR_MAX_FILE_MB ?? 15)
         minConfidence: !!js Number(process.env.OCR_MIN_CONFIDENCE ?? 0.5)
-        maxConcurrency: !!js Number(process.env.OCR_MAX_CONCURRENCY ?? 2)
+        maxConcurrency: !!js Number(process.env.OCR_MAX_CONCURRENCY ?? 1)
         # Semicolon-separated absolute directory roots. Empty keeps local-file
         # access disabled; Harness attachments remain available.
         allowedDirectories: !!js (process.env.OCR_ALLOWED_DIRECTORIES ?? '').split(';').map(value => value.trim()).filter(Boolean)
         maxEdge: !!js Number(process.env.OCR_MAX_IMAGE_EDGE ?? 12000)
         maxPixels: !!js Number(process.env.OCR_MAX_PIXELS ?? 40000000)
         bridgeProvider: deepseek-local-ocr
-        upstreamProvider: deepseek-official
+        # Empty means all currently registered upstream providers. Set this
+        # only to restrict the bridge to specific provider route IDs.
+        upstreamProviders: []
         rewriteImageAttachments: true

@@ -33,6 +33,13 @@ if (@($bundles) -notcontains '@deepseek-ai/dsh-web-app' -or @($bundles) -notcont
     throw "Harness profile '$Profile' does not contain the Web UI and local OCR bundles. Run .\\scripts\\install-plugin.ps1 -Profile $Profile first."
 }
 
+# The normal Harness settings document is shared between every profile. Keep
+# this profile's user-selected model local to the OCR workspace; the launcher
+# never selects or replaces a model. Credentials remain in the normal DSH_HOME
+# credential store and are not copied.
+$profileDirectory = Split-Path -Parent $profileManifest
+$env:DSH_LOCAL_OCR_SETTINGS_PATH = Join-Path $profileDirectory 'settings.yaml'
+
 try {
     $health = Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 -Uri "$((Get-LocalOcrUri).GetLeftPart([System.UriPartial]::Authority))/health"
     if ($health.StatusCode -ne 200) { Write-Warning 'The local OCR service did not return HTTP 200. OCR calls will fail until it is started.' }

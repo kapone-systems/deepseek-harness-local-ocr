@@ -20,15 +20,17 @@ export const Config = z.object({
   serviceUrl: z.string().default('http://127.0.0.1:8765'),
   // The environment-variable name is safe to display; its value is resolved per request.
   tokenEnv: z.string().default('OCR_SERVICE_TOKEN').role('credential-ref'),
-  timeout: z.number().default(30),
+  timeout: z.number().default(90),
   maxFile: z.number().default(15),
   minConfidence: z.number().default(0.5),
-  maxConcurrency: z.number().step(1).default(2),
+  maxConcurrency: z.number().step(1).default(1),
   allowedDirectories: z.array(z.string()).default([]),
   maxEdge: z.number().step(1).default(12_000),
   maxPixels: z.number().step(1).default(40_000_000),
   bridgeProvider: z.string().default('deepseek-local-ocr'),
-  upstreamProvider: z.string().default('deepseek-official'),
+  // Empty means dynamically expose every installed upstream provider. This
+  // never selects a model; the user still chooses a bridge model in Harness.
+  upstreamProviders: z.array(z.string()).default([]),
   rewriteImageAttachments: z.boolean().default(true),
 })
 

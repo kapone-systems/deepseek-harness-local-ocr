@@ -23,10 +23,18 @@ export interface OcrBlock {
   text: string
   bbox: number[][]
   confidence: number
+  /** Zero-based ordinal in the response after reading-order normalization. */
+  block_index: number
+  /** Zero-based visual line index after bbox clustering. */
+  line_index: number
+  /** Zero-based ordinal in the final reading order. */
+  reading_order: number
+  /** V1 one-based block ordinal alias; use line_index for new integrations. */
   line: number
 }
 
 export interface OcrResponse {
+  response_version: string
   request_id: string
   image: OcrImageInfo
   blocks: OcrBlock[]

@@ -1,0 +1,78 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ocr-service
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -c constraints.txt -e '.[test]'
+      - run: python -m pytest
+
+  plugin:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: harness-plugin
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: harness-plugin/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run typecheck
+      - run: pnpm test
+      - run: pnpm run build
+      - run: pnpm pack --pack-destination "$RUNNER_TEMP"
+      - run: npm install --ignore-scripts --omit=peer --prefix "$RUNNER_TEMP/clean-plugin" "$RUNNER_TEMP"/dsh-plugin-local-ocr-*.tgz
+      - name: Load the packed plugin in a clean Harness Web profile
+        shell: bash
+        run: |
+          export DSH_HOME="$RUNNER_TEMP/dsh-clean-profile"
+          PLUGIN_TARBALL="$(find "$RUNNER_TEMP" -maxdepth 1 -name 'dsh-plugin-local-ocr-*.tgz' -print -quit)"
+          test -n "$PLUGIN_TARBALL"
+          pnpm dlx --package '@deepseek-ai/dsh@0.1.0-rc.6' dsh plugin --profile local-ocr add '@deepseek-ai/dsh-web-app@0.1.0-rc.6'
+          pnpm dlx --package '@deepseek-ai/dsh@0.1.0-rc.6' dsh plugin --profile local-ocr add "$PLUGIN_TARBALL"
+          pnpm dlx --package '@deepseek-ai/dsh@0.1.0-rc.6' dsh --profile local-ocr --dump-config > "$RUNNER_TEMP/dsh-clean-profile.yml"
+          grep -F '@deepseek-ai/dsh-web-app' "$DSH_HOME/profiles/local-ocr/package.json"
+          grep -F 'bridgeProvider: deepseek-local-ocr' "$RUNNER_TEMP/dsh-clean-profile.yml"
+          grep -F 'upstreamProviders: []' "$RUNNER_TEMP/dsh-clean-profile.yml"
+          ! grep -F 'provider: deepseek-local-ocr' "$RUNNER_TEMP/dsh-clean-profile.yml"
+
+  runtime:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: runtime
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: node --test test/runtime.test.mjs
+      - run: npm pack --ignore-scripts
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check tracked files for local secrets and caches
+        shell: bash
+        run: |
+          ! git ls-files | grep -E '(^|/)(\.env|\.venv|node_modules|__pycache__|.*\.egg-info)(/|$)'
+          ! git grep -n -I -E '(Bearer [A-Za-z0-9._-]{16,}|sk-[A-Za-z0-9]{20,})' -- ':!*.lock'

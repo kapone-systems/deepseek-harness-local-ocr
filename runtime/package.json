@@ -1,0 +1,48 @@
+{
+  "name": "dsh-local-ocr-runtime",
+  "version": "0.2.0",
+  "description": "Managed local PaddleOCR runtime for the DeepSeek Harness local OCR plugin",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kapone-systems/dsh-vision-local-ocr.git",
+    "directory": "runtime"
+  },
+  "homepage": "https://github.com/kapone-systems/dsh-vision-local-ocr#readme",
+  "bugs": {
+    "url": "https://github.com/kapone-systems/dsh-vision-local-ocr/issues"
+  },
+  "type": "module",
+  "main": "./src/runtime.mjs",
+  "exports": {
+    ".": "./src/runtime.mjs"
+  },
+  "bin": {
+    "dsh-local-ocr-runtime": "src/cli.mjs"
+  },
+  "files": [
+    "src/",
+    "LICENSE",
+    "README.md",
+    "service/constraints.txt",
+    "service/pyproject.toml",
+    "service/requirements.txt",
+    "service/src/local_ocr_service/__init__.py",
+    "service/src/local_ocr_service/__main__.py",
+    "service/src/local_ocr_service/app.py",
+    "service/src/local_ocr_service/config.py",
+    "service/src/local_ocr_service/engine.py",
+    "service/src/local_ocr_service/errors.py",
+    "service/src/local_ocr_service/models.py",
+    "service/src/local_ocr_service/validation.py"
+  ],
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  }
+}

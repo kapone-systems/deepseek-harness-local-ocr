@@ -29,7 +29,7 @@
 - 在显式配置允许目录后读取本地图片文件；服务端永远只接收图片二进制，不接收文件路径。
 - 返回识别文字、原图像素坐标、置信度、图片尺寸、请求 ID 和耗时。
 - 对指定矩形区域重新 OCR，返回的坐标仍对应原图。
-- 通过 `deepseek-local-ocr` bridge provider 让文本模型先接收图片附件，再调用 OCR 工具。
+- 通过 `deepseek-local-ocr` bridge provider 让用户选定的上游模型先接收图片附件，再调用 OCR 工具；上游可来自官方、OpenCode Go 或其他已配置来源。
 - OCR 结果标记为不可信外部证据，图片里的“忽略规则”“发送密钥”等文字不会获得工具权限。
 
 ## 不是什么
@@ -53,7 +53,53 @@ flowchart LR
 
 插件和 OCR 服务是两个独立进程。服务固定监听 `127.0.0.1`，不会默认暴露到局域网；服务 API 不接受任意路径或 URL。
 
-## 30 秒快速开始（Windows）
+## 10 分钟安装（无需 clone）
+
+新机器可直接使用公开 npm 包安装，不需要复制源码、创建 Junction 或手工维护 `.venv`。需要 Node.js `^22.19.0` 或 `>=24.0.0`、64 位 Python 3.10/3.11/3.12，以及可写的本地磁盘。
+
+### 1. 安装 Runtime 和模型
+
+~~~powershell
+npx dsh-local-ocr-runtime setup
+~~~
+
+命令会显示 PaddleOCR/PaddlePaddle 版本、模型来源、预计大小、缓存目录和隐私说明，并要求明确确认下载。无人值守场景必须显式传入 `--yes`；CPU 是默认设备，确认 CUDA 环境后才使用 `--gpu`：
+
+~~~powershell
+npx dsh-local-ocr-runtime setup --cpu --yes
+~~~
+
+`--skip-model-download` 只创建隔离环境并暂缓模型下载，模型未就绪前 `start` 会返回 `OCR_MODEL_NOT_READY`。
+
+### 2. 安装 Harness 插件和 profile
+
+~~~powershell
+npx @deepseek-ai/dsh@0.1.0-rc.6 plugin --profile local-ocr add @deepseek-ai/dsh-web-app@0.1.0-rc.6
+npx @deepseek-ai/dsh@0.1.0-rc.6 plugin --profile local-ocr add dsh-plugin-local-ocr
+npx dsh-local-ocr-runtime doctor
+~~~
+
+第一条命令为自定义 profile 添加 Harness Web bundle；新 profile 默认只有基础 bundle，缺少它就不能提供 3081 的浏览器界面。插件是公开 npm 包，不依赖源码路径、Junction 或 `link:`。`deepseek-local-ocr` bridge 只把图片降级成附件句柄，底层仍委派给已配置的纯文本 provider。
+
+插件不会设置或覆盖 Harness 的默认模型。需要上传图片时，在模型选择器中手动选择 `Local OCR Bridge`，再从其模型列表中选择所需的 DeepSeek 来源和模型（官方、OpenCode Go 或其他已配置 provider）。bridge 只会把图片降级为本地附件句柄，底层仍使用你选定来源的凭据与模型；它不代表原模型具有原生视觉能力。
+
+### 3. 启动 Runtime 和 Harness Web
+
+~~~powershell
+npx dsh-local-ocr-runtime start
+npx dsh-local-ocr-runtime status
+npx @deepseek-ai/dsh@0.1.0-rc.6 --profile local-ocr --port 3081
+~~~
+
+然后打开 **<http://127.0.0.1:3081>**。Runtime 的 `start` 幂等且只管理自己记录的 OCR 进程，`stop` 不会终止其他程序。
+
+### 4. 在页面中使用
+
+先在模型选择器中选择 `Local OCR Bridge` 下的目标模型，再上传图片并明确要求模型调用 `vision_read`；区域读取使用 `vision_read_region`。工具调用会显示在会话中。
+
+## 源码开发流程（仅用于本仓库）
+
+> **不要混用两种生命周期。** 公开安装使用 `npx dsh-local-ocr-runtime` 的独立 venv、状态目录和受控进程；本仓库开发使用下面的 `scripts\*.ps1`、`.venv` 和源码服务。二者都可能占用 `127.0.0.1:8765`，且 Runtime 不会接管由源码脚本启动的 Python 进程。选定一种后，用同一种方式执行启动、停止和诊断。
 
 需要：Windows PowerShell 7+、64 位 Python 3.10/3.11/3.12、Node.js `^22.19.0` 或 `>=24.0.0`、pnpm 11。脚本会优先使用 PATH 中的 Node/pnpm，也会尝试 Harness 自带的 runtime。
 
@@ -64,11 +110,10 @@ git clone https://github.com/kapone-systems/dsh-vision-local-ocr.git
 Set-Location .\dsh-vision-local-ocr
 
 Copy-Item .env.example .env
-.\scripts\install.ps1
-.\scripts\install-plugin.ps1 -Profile local-ocr
+.\scripts\install.ps1 -Profile local-ocr
 ~~~
 
-`install.ps1` 会创建 `.venv`、安装 FastAPI/Pillow/测试依赖、安装 PaddleOCR（默认）并构建插件。`install-plugin.ps1` 会把插件安装到 `$DSH_HOME\profiles\local-ocr`；未设置时默认使用 `D:\.dsh`。
+`install.ps1` 会创建 `.venv`、安装 FastAPI/Pillow/测试依赖、安装 PaddleOCR（默认），然后把插件安装到 `$DSH_HOME\profiles\local-ocr`；未设置时默认使用 `D:\.dsh`。它会同时清理旧预览版写入的强制 bridge 默认模型。仅需安装 OCR 服务时传入 `-SkipPlugin`；需要单独重装或迁移 profile 时，仍可运行 `install-plugin.ps1 -Profile local-ocr`。
 
 如果 PowerShell 禁止运行脚本，只在当前窗口执行：
 
@@ -101,7 +146,6 @@ HARNESS_RUNTIME_DIR=D:\\Program Files\\deepseek-harness\\runtime
 在第二个 PowerShell 窗口：
 
 ~~~powershell
-Set-Location .\dsh-vision-local-ocr
 .\scripts\check-health.ps1
 .\scripts\start-harness-local-ocr.ps1 -Profile local-ocr -Port 3081
 ~~~
@@ -116,9 +160,10 @@ Set-Location .\dsh-vision-local-ocr
 
 ### 4. 在页面中使用
 
-1. 在模型设置中确认 provider 是 `deepseek-local-ocr`，profile 是 `local-ocr`。
-2. 点击上传按钮，或把 PNG/JPEG/WebP 拖入对话。
-3. 明确要求模型调用 `vision_read`，例如：
+1. 关闭此前运行在 3081 的 Harness 后重新执行上面的启动命令，确认 profile 是 `local-ocr`。
+2. 在模型选择器中选 `Local OCR Bridge`，然后选择所需的上游 DeepSeek 来源和模型。
+3. 点击上传按钮，或把 PNG/JPEG/WebP 拖入对话。
+4. 明确要求模型调用 `vision_read`，例如：
 
 ~~~text
 请调用 vision_read，读取这张截图中的报错内容，用 text 模式简洁说明。
@@ -137,21 +182,19 @@ Set-Location .\dsh-vision-local-ocr
 把下面的指令连同仓库地址交给可以操作本机终端的 AI，即可让它按项目约定完成部署。它包含了本项目最重要的兼容性约束：
 
 ~~~text
-请在 Windows PowerShell 中部署这个仓库：
-https://github.com/kapone-systems/dsh-vision-local-ocr
+请在 Windows PowerShell 中部署 DeepSeek Harness 的本地 OCR：
 
 目标：让 DeepSeek Harness 的 local-ocr profile 在本机通过 PaddleOCR 读取 PNG/JPEG/WebP 图片文字。
 
 必须遵守：
-1. 先进入仓库目录，复制 .env.example 为 .env；不要提交 .env、.venv、模型缓存或日志。
-2. 运行 .\scripts\install.ps1；如果需要单独重建插件，再运行 .\scripts\install-plugin.ps1 -Profile local-ocr。
-3. OCR_SERVICE_URL 必须保持 http://127.0.0.1:8765；默认 OCR_USE_GPU=false，先完成 CPU 验收。
-4. 如果机器有专用模型盘，把 OCR_MODEL_CACHE_DIR 指向可写的本地目录；不要把模型缓存放进 Git 仓库。
-5. 在一个终端运行 .\scripts\start-ocr-service.ps1，在另一个终端运行 .\scripts\start-harness-local-ocr.ps1 -Profile local-ocr -Port 3081。
-6. 不要使用旧的 dsh web 命令或 http://127.0.0.1:3080；本项目正确入口是 http://127.0.0.1:3081。
-7. 启动后运行 .\scripts\check-health.ps1，并确认 /health 返回 status=ok；再上传 tests/fixtures/english-screenshot.png 做一次 OCR。
-8. Harness 模型 provider 必须是 deepseek-local-ocr；底层文本模型仍由该 bridge 委派给 deepseek-official 或其他受支持的文本 provider。
-9. 交付时报告：实际 Python/Node/pnpm/Harness 版本、OCR 服务地址、profile 路径、健康检查结果、测试结果和任何未解决问题。
+1. 运行 `npx dsh-local-ocr-runtime setup --cpu --yes`；不要把 venv、模型缓存、日志或凭据写入仓库。
+2. 运行 `npx @deepseek-ai/dsh@0.1.0-rc.6 plugin --profile local-ocr add @deepseek-ai/dsh-web-app@0.1.0-rc.6`，再运行 `npx @deepseek-ai/dsh@0.1.0-rc.6 plugin --profile local-ocr add dsh-plugin-local-ocr`。
+3. 保持 `OCR_SERVICE_URL=http://127.0.0.1:8765`，先完成 CPU 验收；GPU 只有在 doctor 通过后才启用。
+4. 运行 `npx dsh-local-ocr-runtime start` 和 `npx dsh-local-ocr-runtime doctor`。
+5. 运行 `npx @deepseek-ai/dsh@0.1.0-rc.6 --profile local-ocr --port 3081`，不要使用旧的 `3080` web profile。
+6. 上传 PNG/JPEG/WebP 后明确要求模型调用 `vision_read`，再用 `status` 检查 Runtime。
+7. 上传图片前在模型选择器中手动选择 `Local OCR Bridge` 下的目标模型；模型来源可为 DeepSeek 官方、OpenCode Go 或任一已配置的 provider。不要把 bridge 当作原生视觉模型。
+8. 交付时报告：实际 Python/Node/Harness/Paddle 版本、OCR 地址、profile、doctor/测试结果和未解决问题。
 
 验收标准：浏览器能打开 3081；上传测试图片后模型实际调用 vision_read；OCR 返回文字、坐标和置信度；空白图返回空 blocks；服务停止时插件返回可理解的错误，而不是让 Harness 无限等待。
 ~~~
@@ -193,6 +236,7 @@ https://github.com/kapone-systems/dsh-vision-local-ocr
 
 ~~~json
 {
+  "response_version": "2",
   "request_id": "uuid",
   "image": { "width": 1920, "height": 1080 },
   "blocks": [
@@ -200,6 +244,9 @@ https://github.com/kapone-systems/dsh-vision-local-ocr
       "text": "连接服务器失败",
       "bbox": [[420, 310], [665, 310], [665, 348], [420, 348]],
       "confidence": 0.96,
+      "block_index": 0,
+      "line_index": 0,
+      "reading_order": 0,
       "line": 1
     }
   ],
@@ -209,7 +256,7 @@ https://github.com/kapone-systems/dsh-vision-local-ocr
 }
 ~~~
 
-没有识别到文字时是成功响应：`blocks: []`、`full_text: ""`，不会生成伪造内容。坐标始终使用原图像素，`confidence` 始终在 `0` 到 `1` 之间。
+没有识别到文字时是成功响应：`blocks: []`、`full_text: ""`，并在 `warnings` 中返回明确提示，不会生成伪造内容。`block_index`、`line_index`、`reading_order` 都是从 `0` 开始的稳定字段；`line` 是保留给 V1 的一基 detector/block 序号，不能当作真实行号。坐标始终使用原图像素，`confidence` 始终在 `0` 到 `1` 之间。
 
 ## 配置
 
@@ -223,14 +270,23 @@ https://github.com/kapone-systems/dsh-vision-local-ocr
 | `OCR_USE_GPU` | `false` | 只有确认 Paddle CUDA 运行时兼容后才启用 |
 | `OCR_MODEL_CACHE_DIR` | 由 Paddle 决定 | 模型缓存绝对路径；本机示例为 `D:\Program Files\local model\paddleocr` |
 | `OCR_MAX_FILE_MB` | `15` | 单张编码文件上限 |
-| `OCR_TIMEOUT_SECONDS` | `30` | 插件和服务端 OCR 总超时预算 |
+| `OCR_TIMEOUT_SECONDS` | `90` | 插件和服务端 OCR 总超时预算；CPU 复杂截图建议保持此值或更高 |
 | `OCR_MIN_CONFIDENCE` | `0.50` | 低于此值的识别块会被过滤 |
-| `OCR_MAX_CONCURRENCY` | `2` | 插件/服务端并发上限 |
+| `OCR_MAX_CONCURRENCY` | `1` | CPU 默认串行，避免超时任务未结束时引发 `OCR_BUSY` 连锁 |
 | `OCR_QUEUE_TIMEOUT_SECONDS` | `5` | 排队超时后返回 `429 OCR_BUSY` |
 | `OCR_MAX_IMAGE_EDGE` | `12000` | 最大宽或高 |
 | `OCR_MAX_PIXELS` | `40000000` | 解码后的总像素上限 |
 | `OCR_ALLOWED_DIRECTORIES` | 空 | 分号分隔的绝对路径根；空值关闭 `file_path` |
 | `HARNESS_RUNTIME_DIR` | 空 | 可选 Harness runtime，需包含 `node\node.exe` 和 `pnpm\pnpm.cmd` |
+
+Runtime 状态和修复命令：
+
+| 错误码 | 修复 |
+| --- | --- |
+| `OCR_RUNTIME_NOT_INSTALLED` | `npx dsh-local-ocr-runtime setup --yes` |
+| `OCR_RUNTIME_NOT_RUNNING` | `npx dsh-local-ocr-runtime start` |
+| `OCR_MODEL_NOT_READY` | `npx dsh-local-ocr-runtime setup --yes`，确认模型下载完成 |
+| `OCR_VERSION_MISMATCH` | `npx dsh-local-ocr-runtime doctor`，更新插件和 Runtime |
 
 服务端和插件都会拒绝非 `127.0.0.1`、带路径/查询串/凭据的 OCR URL。GPU、限制和允许目录属于受控部署配置，放宽前应重新评估风险。
 
@@ -293,14 +349,20 @@ Invoke-LocalOcrMultipart -Uri 'http://127.0.0.1:8765/v1/ocr' -ImagePath '.\tests
 | 现象 | 处理 |
 | --- | --- |
 | 浏览器打开 `3080` 但没有插件 | 关闭旧 Harness，改用 `start-harness-local-ocr.ps1 -Port 3081` |
-| `OCR_SERVICE_UNAVAILABLE` | 先启动 `start-ocr-service.ps1`，确认 URL 是 `127.0.0.1:8765` |
-| `OCR_ENGINE_UNAVAILABLE` | 重新运行安装；先把 `OCR_USE_GPU=false` |
+| `OCR_RUNTIME_NOT_INSTALLED` | 运行 `npx dsh-local-ocr-runtime setup --yes` |
+| `OCR_RUNTIME_NOT_RUNNING` | 运行 `npx dsh-local-ocr-runtime start` |
+| `OCR_MODEL_NOT_READY` | 运行 `npx dsh-local-ocr-runtime setup --yes`，确认模型下载完成 |
+| `OCR_VERSION_MISMATCH` | 运行 `npx dsh-local-ocr-runtime doctor`，更新插件和 Runtime |
+| `OCR_LEGACY_DEFAULT_MODEL` | 从项目目录运行 `pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\install-plugin.ps1 -Profile local-ocr -DshHome D:\.dsh`，然后重启 Harness |
+| `OCR_SERVICE_UNAVAILABLE` | 检查 Runtime 状态并运行 `npx dsh-local-ocr-runtime start` |
+| `OCR_ENGINE_UNAVAILABLE` | 运行 `npx dsh-local-ocr-runtime doctor`，先把 `OCR_USE_GPU=false` |
 | `OCR_TIMEOUT` | 首次加载模型时重试，或提高超时/缩小图片 |
 | `OCR_BUSY` | 等待当前请求完成，或在受控环境调整并发上限 |
 | `OCR_LOCAL_FILES_DISABLED` | 设置 `OCR_ALLOWED_DIRECTORIES`，重启 Harness 后再传 `file_path` |
 | `OCR_ATTACHMENT_NOT_AUTHORIZED` | 只能使用当前会话真实引用过的附件 ID |
-| `MODEL_DOES_NOT_SUPPORT_IMAGES` | 选择 `deepseek-local-ocr` provider，不要直接选文本专用 provider |
+| `MODEL_DOES_NOT_SUPPORT_IMAGES` | 当前选中的原始 provider 是纯文本路由。上传图片前在模型选择器中改选 `Local OCR Bridge` 下对应的上游模型 |
 | `IMAGE_TOO_LARGE` / `IMAGE_PIXEL_LIMIT_EXCEEDED` | 压缩图片，或在受控部署中调整对应限制 |
+| `ERR_PNPM_UNEXPECTED_STORE` | 旧 profile 的 `node_modules` 与当前 pnpm 使用了不同 store。重新运行 `install-plugin.ps1`；脚本会读取 profile 的 `.modules.yaml` 并复用原 store，不要先删除 `node_modules` |
 | `pnpm` / Node 找不到 | 安装 Node.js + pnpm，或配置 `HARNESS_RUNTIME_DIR` |
 
 ## 项目结构
@@ -309,6 +371,7 @@ Invoke-LocalOcrMultipart -Uri 'http://127.0.0.1:8765/v1/ocr' -ImagePath '.\tests
 .
 ├─ harness-plugin/       TypeScript 插件、工具、bridge provider 和 Vitest 测试
 ├─ ocr-service/          FastAPI 服务、PaddleOCR 封装和 pytest 测试
+├─ runtime/              可公开安装的 dsh-local-ocr-runtime CLI
 ├─ scripts/              Windows 安装、启动、健康检查、测试和基准脚本
 ├─ tests/fixtures/       无敏感信息的中英文、空白和区域测试图片
 ├─ ARCHITECTURE.md       数据流、信任边界和扩展点
@@ -324,6 +387,11 @@ Invoke-LocalOcrMultipart -Uri 'http://127.0.0.1:8765/v1/ocr' -ImagePath '.\tests
 
 | 目的 | 命令 |
 | --- | --- |
+| Runtime 诊断 | `npx dsh-local-ocr-runtime doctor` |
+| Runtime 安装/模型下载 | `npx dsh-local-ocr-runtime setup --yes` |
+| Runtime 启动/停止/状态 | `npx dsh-local-ocr-runtime start` / `stop` / `status` |
+| npm Web bundle 安装 | `npx @deepseek-ai/dsh@0.1.0-rc.6 plugin --profile local-ocr add @deepseek-ai/dsh-web-app@0.1.0-rc.6` |
+| npm OCR 插件安装 | `npx @deepseek-ai/dsh@0.1.0-rc.6 plugin --profile local-ocr add dsh-plugin-local-ocr` |
 | 安装服务和插件依赖 | `.\scripts\install.ps1` |
 | 单独安装/构建 Harness 插件 | `.\scripts\install-plugin.ps1 -Profile local-ocr` |
 | 启动 OCR 服务 | `.\scripts\start-ocr-service.ps1` |

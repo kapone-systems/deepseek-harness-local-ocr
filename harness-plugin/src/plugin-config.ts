@@ -11,7 +11,11 @@ export interface LocalOcrPluginConfig {
   maxEdge: number
   maxPixels: number
   bridgeProvider: string
-  upstreamProvider: string
+  /**
+   * Optional route allow-list for the OCR bridge. An empty list means every
+   * currently registered upstream provider except the bridge itself.
+   */
+  upstreamProviders: string[]
   rewriteImageAttachments: boolean
 }
 
@@ -26,7 +30,7 @@ export interface NormalizedPluginConfig {
   maxEdge: number
   maxPixels: number
   bridgeProvider: string
-  upstreamProvider: string
+  upstreamProviders: readonly string[]
 }
 
 const MAX_FILE_MB = 512
@@ -48,17 +52,17 @@ export function normalizePluginConfig(config: LocalOcrPluginConfig): NormalizedP
   const maxEdge = boundedInteger(config.maxEdge, 'maxEdge', 1, MAX_EDGE)
   const maxPixels = boundedInteger(config.maxPixels, 'maxPixels', 1, MAX_PIXELS)
   const bridgeProvider = providerName(config.bridgeProvider, 'bridgeProvider')
-  const upstreamProvider = providerName(config.upstreamProvider, 'upstreamProvider')
-  if (bridgeProvider === upstreamProvider) {
+  const upstreamProviders = providerList(config.upstreamProviders, 'upstreamProviders')
+  if (upstreamProviders.includes(bridgeProvider)) {
     throw new LocalOcrError(
       'OCR_INVALID_CONFIGURATION',
-      'bridgeProvider and upstreamProvider must be different to prevent recursive model streaming.',
+      'upstreamProviders must not include bridgeProvider to prevent recursive model streaming.',
     )
   }
   if (config.rewriteImageAttachments !== true) {
     throw new LocalOcrError(
       'OCR_INVALID_CONFIGURATION',
-      'rewriteImageAttachments must remain enabled because the upstream DeepSeek route is text-only.',
+      'rewriteImageAttachments must remain enabled because the OCR bridge delegates through a text-only request path.',
     )
   }
   if (!Array.isArray(config.allowedDirectories) || !config.allowedDirectories.every(directory => typeof directory === 'string')) {
@@ -78,7 +82,7 @@ export function normalizePluginConfig(config: LocalOcrPluginConfig): NormalizedP
     maxEdge,
     maxPixels,
     bridgeProvider,
-    upstreamProvider,
+    upstreamProviders,
   }
 }
 
@@ -100,6 +104,13 @@ function providerName(value: unknown, name: string): string {
     throw new LocalOcrError('OCR_INVALID_CONFIGURATION', `${name} must not contain whitespace.`)
   }
   return normalized
+}
+
+function providerList(value: unknown, name: string): string[] {
+  if (!Array.isArray(value)) {
+    throw new LocalOcrError('OCR_INVALID_CONFIGURATION', `${name} must be an array of provider names.`)
+  }
+  return [...new Set(value.map((provider, index) => providerName(provider, `${name}[${index}]`)))]
 }
 
 function boundedNumber(value: unknown, name: string, minimum: number, maximum: number): number {
