@@ -47,12 +47,7 @@ jobs:
           PLUGIN_TARBALL="$(find "$RUNNER_TEMP" -maxdepth 1 -name 'dsh-plugin-local-ocr-*.tgz' -print -quit)"
           test -n "$PLUGIN_TARBALL"
           pnpm dlx --package '@deepseek-ai/dsh@0.1.0-rc.6' dsh plugin --profile local-ocr add '@deepseek-ai/dsh-web-app@0.1.0-rc.6'
-          cat > "$DSH_HOME/profiles/local-ocr/pnpm-workspace.yaml" <<'YAML'
-          packages:
-            - '.'
-          onlyBuiltDependencies:
-            - koffi
-          YAML
+          pnpm --dir "$DSH_HOME/profiles/local-ocr" approve-builds koffi
           pnpm dlx --package '@deepseek-ai/dsh@0.1.0-rc.6' dsh plugin --profile local-ocr add "$PLUGIN_TARBALL"
           pnpm dlx --package '@deepseek-ai/dsh@0.1.0-rc.6' dsh --profile local-ocr --dump-config > "$RUNNER_TEMP/dsh-clean-profile.yml"
           grep -F '@deepseek-ai/dsh-web-app' "$DSH_HOME/profiles/local-ocr/package.json"
