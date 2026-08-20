@@ -1,7 +1,16 @@
 {
   "name": "dsh-plugin-local-ocr",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Local PaddleOCR tools and image-admission bridge for DeepSeek Harness",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kapone-systems/dsh-vision-local-ocr.git",
+    "directory": "harness-plugin"
+  },
+  "homepage": "https://github.com/kapone-systems/dsh-vision-local-ocr#readme",
+  "bugs": {
+    "url": "https://github.com/kapone-systems/dsh-vision-local-ocr/issues"
+  },
   "type": "module",
   "main": "./dist/index.mjs",
   "types": "./dist/index.d.mts",
@@ -14,7 +23,9 @@
   },
   "files": [
     "dist/",
-    "cordis.patch.yml"
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
   ],
   "dsh": {
     "bundle": {

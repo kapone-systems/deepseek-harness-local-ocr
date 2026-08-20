@@ -136,6 +136,61 @@ function Get-VenvPython {
     return $python
 }
 
+function Get-PnpmStoreDirFromModulesYaml {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$ModulesYamlPath)
+
+    if (-not (Test-Path -LiteralPath $ModulesYamlPath -PathType Leaf)) {
+        return $null
+    }
+
+    # pnpm writes this metadata as YAML, but current pnpm 11 versions emit
+    # JSON-style quoted keys and escaped Windows paths. Keep the parser narrow
+    # to the storeDir scalar instead of depending on a YAML module.
+    $contents = Get-Content -LiteralPath $ModulesYamlPath -Raw -ErrorAction Stop
+    $pattern = '(?m)^\s*["'']?storeDir["'']?\s*:\s*(?<value>"(?:[^"\\]|\\.)*"|''(?:[^''\\]|\\.)*''|[^\r\n#]+?)\s*,?\s*$'
+    $match = [regex]::Match($contents, $pattern)
+    if (-not $match.Success) {
+        return $null
+    }
+
+    $rawValue = $match.Groups['value'].Value.Trim()
+    if ([string]::IsNullOrWhiteSpace($rawValue)) {
+        return $null
+    }
+
+    if ($rawValue.StartsWith('"', [StringComparison]::Ordinal) -and
+        $rawValue.EndsWith('"', [StringComparison]::Ordinal)) {
+        try {
+            $storeDir = [string](Microsoft.PowerShell.Utility\ConvertFrom-Json -InputObject $rawValue -ErrorAction Stop)
+        }
+        catch {
+            throw "Invalid quoted storeDir in pnpm metadata '$ModulesYamlPath'."
+        }
+    }
+    elseif ($rawValue.StartsWith("'", [StringComparison]::Ordinal) -and
+        $rawValue.EndsWith("'", [StringComparison]::Ordinal)) {
+        $storeDir = $rawValue.Substring(1, $rawValue.Length - 2).Replace("''", "'")
+    }
+    else {
+        $storeDir = $rawValue
+    }
+
+    $storeDir = $storeDir.Trim()
+    if ([string]::IsNullOrWhiteSpace($storeDir)) {
+        return $null
+    }
+    if (-not [System.IO.Path]::IsPathFullyQualified($storeDir)) {
+        throw "pnpm storeDir in '$ModulesYamlPath' is not an absolute path: $storeDir"
+    }
+    try {
+        return [System.IO.Path]::GetFullPath($storeDir)
+    }
+    catch {
+        throw "pnpm storeDir in '$ModulesYamlPath' is invalid: $storeDir"
+    }
+}
+
 function Set-PreferredPnpmCommand {
     param(
         [string]$PnpmDirectory = '',

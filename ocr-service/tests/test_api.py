@@ -111,6 +111,7 @@ def test_full_image_response_and_confidence_filtering() -> None:
     assert response.status_code == 200
     body = response.json()
     assert set(body) == {
+        "response_version",
         "request_id",
         "image",
         "blocks",
@@ -118,16 +119,82 @@ def test_full_image_response_and_confidence_filtering() -> None:
         "warnings",
         "elapsed_ms",
     }
+    assert body["response_version"] == "2"
     assert body["image"] == {"width": 40, "height": 20}
     assert body["full_text"] == "连接服务器失败"
     assert body["blocks"][0] == {
         "text": "连接服务器失败",
         "bbox": [[1.0, 2.0], [20.0, 2.0], [20.0, 8.0], [1.0, 8.0]],
         "confidence": 0.96,
+        "block_index": 0,
+        "line_index": 0,
+        "reading_order": 0,
         "line": 1,
     }
     assert "1 block(s)" in body["warnings"][0]
     assert engine.calls == [((40, 20), "ch")]
+
+
+def test_blocks_are_clustered_into_rows_and_sorted_left_to_right() -> None:
+    # Deliberately return detector order: the service owns reading order.
+    engine = FakeEngine(
+        [
+            EngineBlock("row 2 right", ((25, 22), (39, 22), (39, 28), (25, 28)), 0.9),
+            EngineBlock("row 1 right", ((25, 2), (39, 2), (39, 8), (25, 8)), 0.9),
+            EngineBlock("row 1 left", ((1, 2), (15, 2), (15, 8), (1, 8)), 0.9),
+            EngineBlock("row 2 left", ((1, 22), (15, 22), (15, 28), (1, 28)), 0.9),
+        ]
+    )
+    with TestClient(create_app(settings(), engine)) as client:
+        response = client.post("/v1/ocr", files=upload(image_bytes(size=(40, 40))))
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [block["text"] for block in body["blocks"]] == [
+        "row 1 left",
+        "row 1 right",
+        "row 2 left",
+        "row 2 right",
+    ]
+    assert [block["line_index"] for block in body["blocks"]] == [0, 0, 1, 1]
+    assert [block["block_index"] for block in body["blocks"]] == [2, 1, 3, 0]
+    assert [block["reading_order"] for block in body["blocks"]] == [0, 1, 2, 3]
+    assert [block["line"] for block in body["blocks"]] == [3, 2, 4, 1]
+    assert body["full_text"] == "row 1 left\nrow 1 right\nrow 2 left\nrow 2 right"
+
+
+def test_clear_two_column_layout_reads_each_column_top_to_bottom() -> None:
+    engine = FakeEngine(
+        [
+            EngineBlock("right 2", ((650, 22), (780, 22), (780, 28), (650, 28)), 0.9),
+            EngineBlock("left 2", ((50, 22), (180, 22), (180, 28), (50, 28)), 0.9),
+            EngineBlock("right 1", ((650, 2), (780, 2), (780, 8), (650, 8)), 0.9),
+            EngineBlock("left 1", ((50, 2), (180, 2), (180, 8), (50, 8)), 0.9),
+        ]
+    )
+    with TestClient(create_app(settings(), engine)) as client:
+        response = client.post("/v1/ocr", files=upload(image_bytes(size=(800, 40))))
+
+    assert response.status_code == 200
+    assert [block["text"] for block in response.json()["blocks"]] == [
+        "left 1", "left 2", "right 1", "right 2",
+    ]
+    assert [block["line_index"] for block in response.json()["blocks"]] == [0, 1, 0, 1]
+
+
+def test_rotated_text_and_blank_results_have_explicit_warnings() -> None:
+    rotated = FakeEngine(
+        [EngineBlock("tilted", ((10, 10), (20, 15), (18, 19), (8, 14)), 0.9)]
+    )
+    with TestClient(create_app(settings(), rotated)) as client:
+        response = client.post("/v1/ocr", files=upload(image_bytes(size=(40, 40))))
+    assert response.status_code == 200
+    assert any("Rotated text" in warning for warning in response.json()["warnings"])
+
+    with TestClient(create_app(settings(), FakeEngine())) as client:
+        blank = client.post("/v1/ocr", files=upload(image_bytes(size=(40, 40))))
+    assert blank.status_code == 200
+    assert any("No text was recognized" in warning for warning in blank.json()["warnings"])
 
 
 def test_blank_image_returns_success_with_empty_blocks() -> None:
@@ -137,7 +204,7 @@ def test_blank_image_returns_success_with_empty_blocks() -> None:
     assert response.status_code == 200
     assert response.json()["blocks"] == []
     assert response.json()["full_text"] == ""
-    assert response.json()["warnings"] == []
+    assert "No text was recognized" in response.json()["warnings"][0]
 
 
 def test_region_crop_and_coordinate_translation() -> None:
@@ -166,6 +233,9 @@ def test_region_crop_and_coordinate_translation() -> None:
         [18.0, 9.0],
         [10.0, 9.0],
     ]
+    assert response.json()["blocks"][0]["block_index"] == 0
+    assert response.json()["blocks"][0]["line_index"] == 0
+    assert response.json()["blocks"][0]["reading_order"] == 0
 
 
 @pytest.mark.parametrize(
@@ -353,7 +423,7 @@ def test_engine_unavailable_is_safe_and_structured() -> None:
         response = client.post("/v1/ocr", files=upload())
 
     assert response.status_code == 503
-    assert error_code(response) == "OCR_ENGINE_UNAVAILABLE"
+    assert error_code(response) == "OCR_MODEL_NOT_READY"
     assert "sensitive" not in response.text
 
 

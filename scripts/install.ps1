@@ -2,7 +2,9 @@
 param(
     [string]$Python,
     [switch]$SkipPaddle,
-    [switch]$SkipPlugin
+    [switch]$SkipPlugin,
+    [ValidatePattern('^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$')][string]$Profile = 'local-ocr',
+    [string]$DshHome = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -49,7 +51,11 @@ $venvPython = Join-Path $venv 'Scripts\python.exe'
 if ($LASTEXITCODE -ne 0) { throw 'Failed to upgrade pip.' }
 
 $extra = if ($SkipPaddle) { 'test' } else { 'ocr,test' }
-& $venvPython -m pip install -e "$repoRoot\ocr-service[$extra]"
+$constraints = Join-Path $repoRoot 'ocr-service\constraints.txt'
+if (-not (Test-Path -LiteralPath $constraints -PathType Leaf)) {
+    throw "Pinned Python constraints are missing: $constraints"
+}
+& $venvPython -m pip install -c $constraints -e "$repoRoot\ocr-service[$extra]"
 if ($LASTEXITCODE -ne 0) { throw 'Failed to install OCR service dependencies.' }
 
 if (-not $SkipPlugin) {
@@ -60,7 +66,14 @@ if (-not $SkipPlugin) {
         Write-Warning 'Install Node.js 22.19+ or 24+ and pnpm 11, then run .\scripts\install-plugin.ps1.'
     }
     else {
-        & (Join-Path $PSScriptRoot 'install-plugin.ps1') -BuildOnly
+        # A source install is an explicit deployment action. Use the full
+        # installer so upgrades also migrate the known V2 preview default.
+        $pluginArguments = @{ Profile = $Profile }
+        if (-not [string]::IsNullOrWhiteSpace($DshHome)) {
+            $pluginArguments.DshHome = $DshHome
+        }
+        & (Join-Path $PSScriptRoot 'install-plugin.ps1') @pluginArguments
+        if ($LASTEXITCODE -ne 0) { throw 'Harness plugin profile installation failed.' }
     }
 }
 

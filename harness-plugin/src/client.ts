@@ -96,8 +96,8 @@ export class OcrHttpClient {
       }
       if (signal.aborted) throw abortError()
       throw new LocalOcrError(
-        'OCR_SERVICE_UNAVAILABLE',
-        'The local OCR service is not reachable. Start it and verify OCR_SERVICE_URL.',
+        'OCR_RUNTIME_NOT_RUNNING',
+        'The local OCR Runtime is not running. Run `npx dsh-local-ocr-runtime start` and retry.',
         { cause: error },
       )
     }
@@ -213,18 +213,25 @@ function serviceHttpError(status: number, parsed: unknown): LocalOcrError {
   const message = typeof rawMessage === 'string' && rawMessage.length > 0
     ? rawMessage.slice(0, 500)
     : `The local OCR service rejected the request (HTTP ${status}).`
-  return new LocalOcrError(code, `Local OCR service error: ${message}`)
+  return new LocalOcrError(code, `Local OCR service error: ${message}${remediationForCode(code)}`)
 }
 
 export function validateOcrResponse(value: unknown): OcrResponse {
   const root = record(value)
   if (root === undefined
+    || typeof root.response_version !== 'string'
     || typeof root.request_id !== 'string' || root.request_id.length === 0
     || typeof root.full_text !== 'string'
     || !Array.isArray(root.blocks)
     || !Array.isArray(root.warnings) || !root.warnings.every(item => typeof item === 'string')
     || !isNonNegativeInteger(root.elapsed_ms)) {
     return invalidResponse()
+  }
+  if (!isResponseVersion(root.response_version)) {
+    throw new LocalOcrError(
+      'OCR_VERSION_MISMATCH',
+      `The OCR Runtime returned response version ${root.response_version}; run \`npx dsh-local-ocr-runtime doctor\` and update the plugin/runtime pair.`,
+    )
   }
   const image = record(root.image)
   if (image === undefined || !isPositiveInteger(image.width) || !isPositiveInteger(image.height)) {
@@ -236,6 +243,9 @@ export function validateOcrResponse(value: unknown): OcrResponse {
     if (block === undefined
       || typeof block.text !== 'string'
       || !isConfidence(block.confidence)
+      || !isNonNegativeInteger(block.block_index)
+      || !isNonNegativeInteger(block.line_index)
+      || !isNonNegativeInteger(block.reading_order)
       || !isPositiveInteger(block.line)
       || !isBbox(block.bbox, image.width, image.height)) {
       return invalidResponse()
@@ -244,18 +254,43 @@ export function validateOcrResponse(value: unknown): OcrResponse {
       text: block.text,
       bbox: block.bbox,
       confidence: block.confidence,
+      block_index: block.block_index,
+      line_index: block.line_index,
+      reading_order: block.reading_order,
       line: block.line,
     })
   }
   const canonicalText = blocks.map(block => block.text).join('\n')
   if (root.full_text !== canonicalText) return invalidResponse()
   return {
+    response_version: root.response_version,
     request_id: root.request_id,
     image: { width: image.width, height: image.height },
     blocks,
     full_text: root.full_text,
     warnings: [...root.warnings],
     elapsed_ms: root.elapsed_ms,
+  }
+}
+
+function isResponseVersion(value: unknown): value is string {
+  return value === '2' || value === '2.0'
+}
+
+function remediationForCode(code: string): string {
+  switch (code) {
+    case 'OCR_MODEL_NOT_READY':
+    case 'OCR_ENGINE_UNAVAILABLE':
+      return ' Run `npx dsh-local-ocr-runtime setup` and then `npx dsh-local-ocr-runtime start`.'
+    case 'OCR_RUNTIME_NOT_INSTALLED':
+      return ' Run `npx dsh-local-ocr-runtime setup`.'
+    case 'OCR_RUNTIME_NOT_RUNNING':
+    case 'OCR_SERVICE_UNAVAILABLE':
+      return ' Run `npx dsh-local-ocr-runtime start`.'
+    case 'OCR_VERSION_MISMATCH':
+      return ' Run `npx dsh-local-ocr-runtime doctor` and update the plugin/runtime pair.'
+    default:
+      return ''
   }
 }
 

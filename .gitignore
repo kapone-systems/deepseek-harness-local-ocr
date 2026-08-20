@@ -13,3 +13,11 @@ harness-plugin/dist/
 *.py[cod]
 *.log
 *.tmp
+.runtime-test-state/
+.npm-cache-v2/
+.clean-plugin-v2/
+.pytest-tmp/
+.dsh-local-ocr-smoke-*/
+.npm-cache-release/
+.tmp-harness-assets/
+*.tgz

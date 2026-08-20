@@ -36,23 +36,27 @@ developer preview，并明确提示会有破坏性变更。
 
 ## 图片附件的上游限制
 
-官方 `deepseek-official` adapter 明确返回 `inputModalities: ['text']`，其序列化器遇到
+官方 `deepseek-official` 以及多数纯文本 upstream adapter 明确返回 `inputModalities: ['text']`，其序列化器遇到
 `ImageBlock` 会抛出 `UNSUPPORTED_CONTENT`。Web Host 还会在图片进入 session 之前执行能力检查，
 并以 `MODEL_DOES_NOT_SUPPORT_IMAGES` 拒绝该 prompt。因此，仅增加一个 OCR 工具无法让纯文本
 DeepSeek 先收到附件 ID；模型调用工具之前，图片已经被 Host 拒绝。
 
-本项目为此注册 `deepseek-local-ocr` 桥接 provider：
+本项目为此注册独立的 `deepseek-local-ocr` 桥接 provider（不设置默认模型）：
 
 1. 桥接 provider 向 Harness 声明它能**接收**图片，以通过 Host 的附件准入。
 2. 图片仍由官方 `ctx.attachments` 在本地持久化与校验。
 3. 桥接 adapter 在委派请求前把 `ImageBlock` 改写为不含字节的附件句柄提示。
 4. 纯文本模型调用 `vision_read`；工具只接受当前 session 中确实引用的附件。
-5. 插件把 OCR 文字作为不可信证据返回，然后将纯文本调用委派给 `deepseek-official`。
+5. 插件把 OCR 文字作为不可信证据返回，然后将纯文本调用委派给模型选择器中编码的真实 upstream provider。
 
 这里的 `image` 声明描述的是桥接 provider 的输入能力，不代表底层 DeepSeek 模型具有原生视觉。
 任何文档、工具描述和错误信息都不得把该能力称为图片理解或原生视觉。
 
 ## 兼容范围
+
+V2 的公开安装组合由两个 npm 包组成：`dsh-plugin-local-ocr@0.2.0` 和
+`dsh-local-ocr-runtime@0.2.0`。Runtime 会把经过锁定的 Python 服务源码随包提供，公开安装不再依赖
+仓库 Junction；源码 Junction 仅保留给本仓库开发脚本。
 
 - 目标兼容基线：`@deepseek-ai/dsh*` `0.1.0-rc.6`、Cordis `4.0.1`、Node
   `^22.19.0 || >=24.0.0`。安装依赖后必须用 `scripts/test.ps1`、bundle 配置导出和实际附件会话复核。
@@ -67,7 +71,7 @@ DeepSeek 先收到附件 ID；模型调用工具之前，图片已经被 Host �
 
 ## 自定义 profile 的 Web bundle
 
-官方自定义 profile 的初始 bundle 只有 `@deepseek-ai/dsh-base`，因此不能仅安装 OCR bundle 后就期待浏览器界面出现。`@deepseek-ai/dsh-web-app` 负责 Web Host、静态前端、API gateway 和 `--port` 参数。此项目的 `scripts/install-plugin.ps1` 会确保 profile bundle 顺序为：
+官方自定义 profile 的初始 bundle 只有 `@deepseek-ai/dsh-base`，因此不能仅安装 OCR bundle 后就期待浏览器界面出现。`@deepseek-ai/dsh-web-app` 负责 Web Host、静态前端、API gateway 和 `--port` 参数。公开 npm 安装必须先运行 `dsh plugin --profile local-ocr add @deepseek-ai/dsh-web-app@0.1.0-rc.6`，再安装 OCR bundle；源码开发时，本项目的 `scripts/install-plugin.ps1` 会确保 profile bundle 顺序为：
 
 ```json
 [
@@ -77,7 +81,10 @@ DeepSeek 先收到附件 ID；模型调用工具之前，图片已经被 Host �
 ]
 ```
 
-必须使用 `scripts/start-harness-local-ocr.ps1`（固定 `@deepseek-ai/dsh@0.1.0-rc.6`）启动该 profile。`dsh web` 是硬编码 `--profile web` 的别名，旧版桌面启动器也可能硬编码自己的 `DSH_HOME`；两者都不会载入 `local-ocr` profile。
+必须使用 `scripts/start-harness-local-ocr.ps1`（固定 `@deepseek-ai/dsh@0.1.0-rc.6`）启动该 profile。bundle 不会
+覆盖 `agent-default-model`；用户在模型选择器中手动选择 bridge 和任意已注册 upstream 模型。脚本只为
+`local-ocr` 设置 profile 专用的 `settings.yaml`，避免不同 profile 的用户选择互相覆盖。`dsh web` 是硬编码 `--profile web` 的别名，旧版
+桌面启动器也可能硬编码自己的 `DSH_HOME`；两者都不会载入 `local-ocr` profile。
 
 ## Windows 安装路径兼容性
 

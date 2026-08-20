@@ -1,0 +1,4 @@
+service/**/__pycache__/**
+service/**/*.py[cod]
+service/**/deepseek_harness_local_ocr_service.egg-info/**
+*.log
